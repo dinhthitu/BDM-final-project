@@ -60,7 +60,7 @@ def clean_data(df):
     df = df[df['likes'] >= 0]       # Likes can't be negative
     
     # Convert booleans
-    bool_cols = ['rating_disabled', 'comments_disabled']
+    bool_cols = ['ratings_disabled', 'comments_disabled']
     df[bool_cols] = df[bool_cols].astype(int)
     
     # Deduplicate
