@@ -1,0 +1,205 @@
+# -*- coding: utf-8 -*-
+"""Complete YouTube Trending Data Preprocessing Pipeline"""
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings('ignore')
+
+# ======================
+# 1. DATA LOADING
+# ======================
+def load_raw_data():
+    """Load and merge raw datasets with validation"""
+    try:
+        # Main trending data
+        df = pd.read_csv(
+            'youtube_trending.csv',
+            parse_dates=['trending_date', 'publishedAt'],
+            usecols=[
+                'video_id', 'title', 'channelId', 'channelTitle',
+                'publishedAt', 'trending_date', 'categoryId',
+                'view_count', 'likes', 'comment_count',
+                'thumbnail_link', 'tags', 'description',
+                'rating_disabled', 'comments_disabled', 'country'
+            ]
+        )
+        
+        # Add category names if available
+        try:
+            category_df = pd.read_json('category_ids.json')
+            df = pd.merge(df, category_df, on='categoryId', how='left')
+        except:
+            print("Category mapping file not found - using numeric IDs")
+        
+        print(f"✅ Successfully loaded {len(df):,} records")
+        return df
+    
+    except Exception as e:
+        print(f"❌ Error loading data: {e}")
+        return None
+
+# ======================
+# 2. DATA CLEANING
+# ======================
+def clean_data(df):
+    """Handle missing values, outliers, and data types"""
+    
+    # Handle missing values
+    df['description'] = df['description'].fillna('')
+    df['tags'] = df['tags'].fillna('')
+    
+    # Convert counts to numeric, filling missing with 0
+    count_cols = ['view_count', 'likes', 'comment_count']
+    df[count_cols] = df[count_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    # Remove impossible values
+    df = df[df['view_count'] > 0]  # Videos must have at least 1 view
+    df = df[df['likes'] >= 0]       # Likes can't be negative
+    
+    # Convert booleans
+    bool_cols = ['rating_disabled', 'comments_disabled']
+    df[bool_cols] = df[bool_cols].astype(int)
+    
+    # Deduplicate
+    df = df.drop_duplicates(subset=['video_id', 'trending_date'])
+    
+    print(f"🧹 Cleaned data shape: {df.shape}")
+    return df
+
+# ======================
+# 3. FEATURE ENGINEERING
+# ======================
+def create_features(df):
+    """Generate analytical features"""
+    
+    # Time-based features
+    df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+    df['publish_hour'] = df['publishedAt'].dt.hour
+    df['publish_day'] = df['publishedAt'].dt.day_name()
+    df['publish_weekday'] = df['publishedAt'].dt.dayofweek  # Monday=0
+    
+    # Engagement metrics
+    df['like_ratio'] = df['likes'] / (df['view_count'] + 1)  # +1 prevents divide-by-zero
+    df['comment_ratio'] = df['comment_count'] / (df['view_count'] + 1)
+    df['engagement_score'] = (0.6*df['like_ratio'] + 0.4*df['comment_ratio']) * 100
+    
+    # Content features
+    df['title_length'] = df['title'].str.split().str.len()
+    df['title_chars'] = df['title'].str.len()
+    df['tag_count'] = df['tags'].apply(lambda x: len(x.split('|')) if x else 0)
+    df['has_description'] = df['description'].str.len().clip(upper=1)  # 0 or 1
+    
+    # Thumbnail features
+    df['has_custom_thumbnail'] = (~df['thumbnail_link'].str.contains('default', na=False)).astype(int)
+    
+    # Channel features
+    channel_stats = df.groupby('channelId').agg(
+        channel_video_count=('video_id', 'count'),
+        channel_avg_views=('view_count', 'median')
+    ).reset_index()
+    df = pd.merge(df, channel_stats, on='channelId', how='left')
+    
+    print(f"✨ Engineered {len(df.columns) - len(raw_cols)} new features")
+    return df
+
+# ======================
+# 4. FEATURE SELECTION
+# ======================
+def select_features(df):
+    """Keep only optimal features for analysis"""
+    
+    keep_cols = [
+        # Core identifiers
+        'video_id', 'country', 'categoryId', 'channelTitle',
+        
+        # Time features
+        'publishedAt', 'trending_date', 'hours_to_trend', 'publish_hour', 'publish_day',
+        
+        # Engagement
+        'view_count', 'likes', 'comment_count', 'like_ratio', 'engagement_score',
+        
+        # Content
+        'title_length', 'tag_count', 'has_custom_thumbnail',
+        
+        # Channel
+        'channel_video_count', 'channel_avg_views',
+        
+        # Restrictions
+        'rating_disabled'
+    ]
+    
+    return df[keep_cols]
+
+# ======================
+# 5. DATA VALIDATION
+# ======================
+def validate_data(df):
+    """Check data quality after preprocessing"""
+    
+    # Check for nulls
+    null_counts = df.isnull().sum()
+    if null_counts.sum() > 0:
+        print(f"⚠️ Null values detected:\n{null_counts[null_counts > 0]}")
+    else:
+        print("✅ No null values found")
+    
+    # Check ranges
+    assert df['like_ratio'].between(0, 1).all(), "Invalid like ratio values"
+    assert df['hours_to_trend'].min() >= 0, "Negative time-to-trend"
+    
+    print("🔍 Data validation complete")
+
+# ======================
+# 6. SAVE OUTPUT
+# ======================
+def save_output(df):
+    """Save processed data and summary stats"""
+    
+    # Save main dataset
+    df.to_csv('processed_trending.csv', index=False)
+    
+    # Save summary stats
+    stats = df.groupby(['country', 'categoryId']).agg({
+        'hours_to_trend': 'median',
+        'like_ratio': 'median',
+        'view_count': 'median',
+        'video_id': 'count'
+    }).reset_index()
+    stats.to_csv('trending_stats_summary.csv', index=False)
+    
+    print(f"💾 Saved processed data ({len(df):,} records)")
+
+# ======================
+# MAIN EXECUTION
+# ======================
+if __name__ == '__main__':
+    # Load raw data
+    print("🚀 Starting preprocessing pipeline...")
+    raw_df = load_raw_data()
+    
+    if raw_df is not None:
+        # Store original columns for comparison
+        raw_cols = raw_df.columns.tolist()
+        
+        # Process data
+        df = clean_data(raw_df)
+        df = create_features(df)
+        df = select_features(df)
+        validate_data(df)
+        
+        # Save and visualize
+        save_output(df)
+        
+        # Generate correlation plot
+        plt.figure(figsize=(12,10))
+        sns.heatmap(df.select_dtypes(include=['number']).corr(),
+                    annot=True, fmt='.2f', cmap='coolwarm', center=0)
+        plt.title('Feature Correlation Matrix')
+        plt.tight_layout()
+        plt.savefig('correlation_matrix.png', dpi=300)
+        plt.show()
+        
+        print("🎉 Preprocessing complete!")
