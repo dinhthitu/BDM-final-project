@@ -1,0 +1,46 @@
+# -*- coding: utf-8 -*-
+"""Trending Video Count by Category (Per Country)"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def analyze_country(file_path):
+    """Run full analysis for one country file"""
+    # Load data
+    df = pd.read_csv(file_path)
+    
+    # 1. Count videos per category
+    category_counts = df['categoryId'].value_counts().sort_values(ascending=False)
+    
+    # 2. Plot (Vietnamese labels)
+    plt.figure(figsize=(10, 5))
+    ax = sns.barplot(x=category_counts.index, y=category_counts.values, palette="viridis")
+    
+    plt.title(f'Phân bổ video trending theo thể loại\n({file_path.split(".")[0]})')
+    plt.xlabel('Thể loại')
+    plt.ylabel('Số lượng video')
+    plt.xticks(rotation=45, ha='right')
+    
+    # Add value labels
+    for p in ax.patches:
+        ax.annotate(f"{int(p.get_height())}", 
+                   (p.get_x() + p.get_width() / 2., p.get_height()),
+                   ha='center', va='center', 
+                   xytext=(0, 5), 
+                   textcoords='offset points')
+    
+    plt.tight_layout()
+    plt.savefig(f'trending_categories_{file_path.split(".")[0]}.png', dpi=300)
+    plt.close()
+    
+    # 3. Save stats
+    stats = pd.DataFrame({
+        'Thể loại': category_counts.index,
+        'Số video': category_counts.values,
+        'Tỉ lệ (%)': round(category_counts / len(df) * 100, 1)
+    })
+    stats.to_csv(f'category_stats_{file_path.split(".")[0]}.csv', index=False)
+    print(f"✅ Đã phân tích xong {len(df)} video từ {file_path}")
+
+# Run like this for each file:
+# analyze_country('US.csv')
