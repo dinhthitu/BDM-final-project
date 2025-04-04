@@ -1,0 +1,34 @@
+# -*- coding: utf-8 -*-
+"""Data Preprocessing Module"""
+import pandas as pd
+
+def preprocess_data(filepath):
+    """Tiền xử lý dữ liệu thô"""
+    # Load và lọc dữ liệu
+    df = pd.read_csv(
+        filepath,
+        parse_dates=['trending_date', 'publishedAt'],
+        usecols=['title', 'categoryId', 'view_count', 'likes', 
+                'comment_count', 'tags', 'publishedAt', 'trending_date']
+    )
+    
+    # Tính toán features
+    df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+    df['title_length'] = df['title'].str.len()
+    df['tag_count'] = df['tags'].str.split('|').str.len().fillna(0)
+    df['publish_hour'] = df['publishedAt'].dt.hour
+    
+    # Lọc outliers
+    df = df[
+        (df['hours_to_trend'].between(1, 168)) & 
+        (df['view_count'] > 1000)
+    ]
+    
+    return df.dropna()
+
+if __name__ == "__main__":
+    df = preprocess_data("youtube_trending.csv")
+    df.to_csv("processed_data.csv", index=False)
+
+
+
