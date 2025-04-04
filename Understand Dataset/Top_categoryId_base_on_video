@@ -1,0 +1,34 @@
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+
+# 1. Load data
+df = pd.read_csv('US_youtube_trending_data.csv')
+
+# 2. Load category mapping
+with open('category_id_to_name.json', 'r') as f:
+    category_names = json.load(f)
+
+# 3. Count videos per category
+category_counts = df['categoryId'].value_counts().sort_values(ascending=False)
+
+# 4. Map category IDs to names
+category_counts = category_counts.rename(index=category_names)
+
+# 5. Display results
+print("=== Top Categories by Number of Trending Videos ===")
+print(category_counts.head(10).to_string())  # Show top 10 categories
+
+# 6. Visualize top categories
+plt.figure(figsize=(12, 6))
+category_counts.head(10).plot(kind='bar', color='teal')
+plt.title('Top 10 Categories by Number of Trending Videos', fontsize=15)
+plt.xlabel('Category', fontsize=12)
+plt.ylabel('Number of Videos', fontsize=12)
+plt.xticks(rotation=45, ha='right')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+# Save visualization
+plt.savefig('top_categories_by_video_count.png', bbox_inches='tight')
+print("\n✅ Saved visualization to 'top_categories_by_video_count.png'")
