@@ -1,0 +1,35 @@
+# -*- coding: utf-8 -*-
+"""Exploratory Data Analysis Module"""
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def run_eda(df):
+    """Thực hiện phân tích khám phá dữ liệu"""
+    # 1. Correlation Matrix
+    numeric_cols = ['hours_to_trend', 'view_count', 'likes', 'comment_count', 
+                   'title_length', 'tag_count', 'publish_hour']
+    corr = df[numeric_cols].corr()
+    
+    plt.figure(figsize=(10,8))
+    sns.heatmap(corr, annot=True, cmap='coolwarm', center=0)
+    plt.title('Correlation Matrix')
+    plt.savefig('correlation.png')
+    plt.close()
+    
+    # 2. Top Categories Analysis
+    category_stats = df.groupby('categoryId').agg(
+        video_count=('title', 'count'),
+        avg_hours=('hours_to_trend', 'median')
+    ).sort_values('video_count', ascending=False).head(5)
+    
+    fig, ax = plt.subplots(1,2, figsize=(14,6))
+    category_stats['video_count'].plot(kind='bar', ax=ax[0], title='Top Categories by Video Count')
+    category_stats['avg_hours'].plot(kind='bar', ax=ax[1], color='orange', title='Avg Trending Time (hours)')
+    plt.tight_layout()
+    plt.savefig('category_analysis.png')
+    plt.close()
+
+if __name__ == "__main__":
+    df = pd.read_csv("processed_data.csv")
+    run_eda(df)
