@@ -1,0 +1,77 @@
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+def analyze_trending_patterns(csv_path, json_path):
+    """Phân tích toàn diện: Ngày trong tuần, Giờ đăng, Danh mục"""
+    # 1. Load và tiền xử lý
+    df = pd.read_csv(csv_path)
+    with open(json_path) as f:
+        categories = {int(k):v for k,v in json.load(f).items()}
+    
+    # 2. Chuẩn hóa datetime
+    df['trending_date'] = pd.to_datetime(df['trending_date'])
+    df['publishedAt'] = pd.to_datetime(df['publishedAt'])
+    
+    # 3. Trích xuất features
+    df['day_of_week'] = df['trending_date'].dt.day_name()
+    df['publish_hour'] = df['publishedAt'].dt.hour
+    df['category_name'] = df['categoryId'].map(categories)
+    df['time_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds()/3600
+    
+    # 4. Tạo visualization
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(3, 2)
+    
+    # 4.1. Phân bổ theo ngày (tất cả danh mục)
+    ax1 = fig.add_subplot(gs[0, 0])
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    df['day_of_week'].value_counts().reindex(day_order).plot.bar(ax=ax1, color='#1f77b4')
+    ax1.set_title('Số lượng video trending theo ngày', pad=20)
+    ax1.set_xlabel('')
+    
+    # 4.2. Phân bổ theo giờ đăng
+    ax2 = fig.add_subplot(gs[0, 1])
+    df['publish_hour'].value_counts().sort_index().plot.bar(ax=ax2, color='#ff7f0e')
+    ax2.set_title('Giờ đăng video phổ biến', pad=20)
+    ax2.set_xlabel('Giờ trong ngày')
+    
+    # 4.3. Top categories theo ngày (heatmap)
+    ax3 = fig.add_subplot(gs[1:, :])
+    heatmap_data = df.groupby(['day_of_week', 'category_name']).size().unstack().fillna(0).reindex(day_order)
+    sns.heatmap(heatmap_data.T, cmap='YlGnBu', annot=True, fmt='.0f', ax=ax3, cbar_kws={'label': 'Số lượng video'})
+    ax3.set_title('Video trending theo ngày và danh mục', pad=20)
+    ax3.set_xlabel('')
+    ax3.set_ylabel('Danh mục')
+    
+    plt.tight_layout()
+    plt.savefig('trending_analysis.png', dpi=150)
+    
+    # 5. Xuất kết quả chi tiết
+    results = []
+    for cat in df['category_name'].unique():
+        cat_data = df[df['category_name'] == cat]
+        peak_day = cat_data['day_of_week'].value_counts().idxmax()
+        avg_hour = cat_data['publish_hour'].mean()
+        avg_time_to_trend = cat_data['time_to_trend'].median()
+        
+        results.append({
+            'Danh mục': cat,
+            'Ngày đỉnh': peak_day,
+            'Giờ đăng trung bình': f"{avg_hour:.1f}",
+            'Thời gian lên trending (giờ)': f"{avg_time_to_trend:.1f}",
+            'Số video': len(cat_data)
+        })
+    
+    results_df = pd.DataFrame(results)
+    results_df.to_csv('trending_stats_by_category.csv', index=False)
+    
+    print("✅ Phân tích hoàn tất!")
+    print(f"- Biểu đồ: trending_analysis.png")
+    print(f"- Dữ liệu: trending_stats_by_category.csv")
+    
+    return results_df.sort_values('Số video', ascending=False)
+
+# Cách sử dụng
+# results = analyze_trending_patterns('BR_youtube_trending_data.csv', 'BR_category_id.json')
