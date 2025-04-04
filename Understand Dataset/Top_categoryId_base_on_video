@@ -1,6 +1,6 @@
 import pandas as pd
 import json
-import matplotlib.pyplot as plt
+from tabulate import tabulate  # For pretty-printing tables
 
 # 1. Load data
 df = pd.read_csv('US_youtube_trending_data.csv')
@@ -9,26 +9,25 @@ df = pd.read_csv('US_youtube_trending_data.csv')
 with open('category_id_to_name.json', 'r') as f:
     category_names = json.load(f)
 
-# 3. Count videos per category
-category_counts = df['categoryId'].value_counts().sort_values(ascending=False)
+# 3. Calculate video counts and percentages
+category_stats = (
+    df['categoryId']
+    .value_counts()
+    .rename(index=category_names)
+    .reset_index()
+)
+category_stats.columns = ['Category', 'Video Count']
+category_stats['Percentage'] = (category_stats['Video Count'] / len(df) * 100).round(2)
 
-# 4. Map category IDs to names
-category_counts = category_counts.rename(index=category_names)
+# 4. Display ALL categories in a formatted table
+print("=== All Categories by Trending Frequency ===")
+print(tabulate(
+    category_stats,
+    headers=['STT', 'Category', 'Video Count', 'Percentage (%)'],
+    showindex=True,
+    tablefmt='pretty'
+))
 
-# 5. Display results
-print("=== Top Categories by Number of Trending Videos ===")
-print(category_counts.head(10).to_string())  # Show top 10 categories
-
-# 6. Visualize top categories
-plt.figure(figsize=(12, 6))
-category_counts.head(10).plot(kind='bar', color='teal')
-plt.title('Top 10 Categories by Number of Trending Videos', fontsize=15)
-plt.xlabel('Category', fontsize=12)
-plt.ylabel('Number of Videos', fontsize=12)
-plt.xticks(rotation=45, ha='right')
-plt.grid(axis='y', linestyle='--', alpha=0.7)
-plt.tight_layout()
-
-# Save visualization
-plt.savefig('top_categories_by_video_count.png', bbox_inches='tight')
-print("\n✅ Saved visualization to 'top_categories_by_video_count.png'")
+# 5. Optional: Save to CSV
+category_stats.to_csv('category_stats.csv', index=False)
+print("\n✅ Saved full results to 'category_stats.csv'")
