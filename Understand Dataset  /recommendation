@@ -1,0 +1,49 @@
+# -*- coding: utf-8 -*-
+"""Recommendation Generation Module"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def generate_recommendations(df, model_results, category_id):
+    """Tạo recommendation cho category cụ thể"""
+    # Lọc dữ liệu category
+    cat_data = df[df['categoryId'] == category_id]
+    
+    # Lấy model tốt nhất (LightGBM)
+    model = model_results['LightGBM']['model']
+    explainer = shap.TreeExplainer(model)
+    
+    # Tính SHAP values
+    X = cat_data[['view_count', 'likes', 'comment_count', 'title_length', 'tag_count', 'publish_hour']]
+    shap_values = explainer.shap_values(X)
+    
+    # Top features
+    feature_impact = pd.DataFrame(shap_values, columns=X.columns).abs().mean().sort_values(ascending=False)
+    
+    # Time analysis
+    best_hour = cat_data.groupby('publish_hour')['hours_to_trend'].median().idxmin()
+    
+    # Generate report
+    report = {
+        'category': category_id,
+        'avg_trend_hours': cat_data['hours_to_trend'].median(),
+        'top_features': feature_impact.head(3).to_dict(),
+        'best_posting_hour': best_hour,
+        'optimal_title_length': int(cat_data['title_length'].median()),
+        'top_tags': cat_data['tags'].str.split('|').explode().value_counts().head(5).index.tolist()
+    }
+    
+    # Visualization
+    plt.figure(figsize=(10,5))
+    feature_impact.head(5).plot(kind='barh', color='purple')
+    plt.title(f'Top Features Impact for Category {category_id}')
+    plt.xlabel('SHAP Value (Impact Score)')
+    plt.savefig(f'recommendation_{category_id}.png')
+    plt.close()
+    
+    return report
+
+if __name__ == "__main__":
+    df = pd.read_csv("processed_data.csv")
+    model_results = train_and_compare(df)  # From modeling.py
+    rec = generate_recommendations(df, model_results, 10)  # For Music category
+    print(rec)
