@@ -1,0 +1,39 @@
+# -*- coding: utf-8 -*-
+"""Category Ranking by Trending Video Count"""
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def generate_ranking(df):
+    """Xếp hạng category theo số lượng video trending"""
+    ranking = df['category_name'].value_counts().reset_index()
+    ranking.columns = ['Category', 'Video Count']
+    
+    # Lưu bảng xếp hạng
+    ranking.to_csv('output/category_ranking.csv', index=False)
+    
+    # Visualize
+    plt.figure(figsize=(12, 8))
+    ranking.sort_values('Video Count').plot(
+        kind='barh', 
+        x='Category', 
+        y='Video Count',
+        color='teal',
+        legend=False
+    )
+    plt.title('Top Categories by Trending Video Count', pad=20)
+    plt.xlabel('Number of Videos')
+    plt.grid(axis='x')
+    plt.tight_layout()
+    plt.savefig('output/category_ranking.png', dpi=120)
+    plt.close()
+
+if __name__ == "__main__":
+    # Load data
+    with open('category_ids.json') as f:
+        CATEGORY_MAP = {int(item['id']): item['snippet']['title'] 
+                       for item in json.load(f)['items']}
+    
+    df = pd.read_csv("data/processed_data.csv")
+    df['category_name'] = df['categoryId'].map(CATEGORY_MAP)
+    generate_ranking(df)
