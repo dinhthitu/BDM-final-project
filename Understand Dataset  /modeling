@@ -1,0 +1,46 @@
+# -*- coding: utf-8 -*-
+"""Model Training and Evaluation Module"""
+import pandas as pd
+import shap
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
+from sklearn.model_selection import train_test_split
+
+def train_and_compare(df):
+    """Huấn luyện và so sánh model"""
+    # Chuẩn bị dữ liệu
+    X = df[['view_count', 'likes', 'comment_count', 'title_length', 'tag_count', 'publish_hour']]
+    y = df['hours_to_trend']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Huấn luyện model
+    models = {
+        "XGBoost": XGBRegressor(random_state=42),
+        "LightGBM": LGBMRegressor(random_state=42)
+    }
+    
+    results = {}
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_test)
+        
+        results[name] = {
+            'model': model,
+            'shap_values': shap_values,
+            'feature_importance': pd.Series(np.abs(shap_values).mean(axis=0), index=X.columns)
+        }
+    
+    # Visualize feature importance
+    fig, ax = plt.subplots(1,2, figsize=(14,6))
+    for i, (name, res) in enumerate(results.items()):
+        res['feature_importance'].sort_values().plot(kind='barh', ax=ax[i], title=f'{name} Feature Importance')
+    plt.tight_layout()
+    plt.savefig('feature_importance.png')
+    plt.close()
+    
+    return results
+
+if __name__ == "__main__":
+    df = pd.read_csv("processed_data.csv")
+    train_and_compare(df)
