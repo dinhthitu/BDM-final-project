@@ -1,34 +1,35 @@
-# -*- coding: utf-8 -*-
-"""Data Preprocessing Module"""
 import pandas as pd
 
-def preprocess_data(filepath):
-    """Tiền xử lý dữ liệu thô"""
-    # Load và lọc dữ liệu
-    df = pd.read_csv(
-        filepath,
-        parse_dates=['trending_date', 'publishedAt'],
-        usecols=['title', 'categoryId', 'view_count', 'likes', 
-                'comment_count', 'tags', 'publishedAt', 'trending_date']
-    )
-    
-    # Tính toán features
-    df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
-    df['title_length'] = df['title'].str.len()
-    df['tag_count'] = df['tags'].str.split('|').str.len().fillna(0)
-    df['publish_hour'] = df['publishedAt'].dt.hour
-    
-    # Lọc outliers
-    df = df[
-        (df['hours_to_trend'].between(1, 168)) & 
-        (df['view_count'] > 1000)
-    ]
-    
-    return df.dropna()
+# Load dữ liệu (giả sử file là 'US_youtube_trending_data.csv')
+df = pd.read_csv('US_youtube_trending_data.csv')
 
-if __name__ == "__main__":
-    df = preprocess_data("youtube_trending.csv")
-    df.to_csv("processed_data.csv", index=False)
+# Chuyển cột thời gian sang datetime
+df['publishedAt'] = pd.to_datetime(df['publishedAt'])
+df['trending_date'] = pd.to_datetime(df['trending_date'])
 
+# Tính số giờ từ lúc đăng đến lúc trending
+df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
 
+# Lọc bỏ video không lên trending (nếu có)
+df = df.dropna(subset=['hours_to_trend'])
+# Chỉ sử dụng các feature gốc và thời gian
+features = [
+    'views', 'likes', 'dislikes', 'comments',  # Metrics cơ bản
+    'categoryId',                              # Thể loại video
+    'title_length',                            # Độ dài tiêu đề
+    'publish_hour',                            # Giờ đăng (0-23)
+    'publish_dayofweek'                        # Ngày trong tuần (0-6)
+]
 
+# Tạo các features mới từ dữ liệu gốc
+df['title_length'] = df['title'].str.len()
+df['publish_hour'] = df['publishedAt'].dt.hour
+df['publish_dayofweek'] = df['publishedAt'].dt.dayofweek  # 0=Thứ 2, 6=Chủ nhật
+
+# Chọn features cuối cùng
+X = df[features]
+y = df['hours_to_trend']
+
+from sklearn.model_selection import train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
