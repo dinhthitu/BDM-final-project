@@ -3,14 +3,14 @@ import json
 import matplotlib.pyplot as plt
 
 # 1. Load data từ file CSV đã preprocess
-df = pd.read_csv('US_youtube_trending_data.csv')  # Thay tên file nếu cần
-df['publishedAt'] = pd.to_datetime(df['publishedAt'])
-df['trending_date'] = pd.to_datetime(df['trending_date'])
-df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+df = pd.read_csv('US_youtube_trending_data.csv')  # Thay tên file nếu cần processed
+# df['publishedAt'] = pd.to_datetime(df['publishedAt'])
+# df['trending_date'] = pd.to_datetime(df['trending_date'])
+# df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
 
 # 2. Load category mapping từ JSON
-with open('category_id_to_name.json', 'r') as f:  # Thay tên file nếu cần
-    category_names = json.load(f)
+# with open('category_id_to_name.json', 'r') as f:  # Thay tên file nếu cần
+   # category_names = json.load(f)
 
 # 3. Tính average hours_to_trend theo category
 category_avg = df.groupby('categoryId')['hours_to_trend'].mean().sort_values()
