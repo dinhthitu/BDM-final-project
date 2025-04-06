@@ -1,75 +1,79 @@
 import pandas as pd
 import numpy as np
+from nltk.corpus import stopwords
+from textblob import TextBlob
+import json
 
-# Load dataset (giả sử dữ liệu từ file US_youtube_trending_data.csv)
+# Load data
 df = pd.read_csv('US_youtube_trending_data.csv')
 
-# Kiểm tra các columns và thông tin cơ bản
-print("Columns:", df.columns.tolist())
-print("Shape:", df.shape)
-print("Missing values:\n", df.isnull().sum())
-
+# Drop unnecessary columns
 columns_to_drop = [
     'thumbnail_link', 'comments_disabled', 'ratings_disabled',
-    'description', 'channelId', 'channelTitle'
+    'description', 'channelId', 'channelTitle', 'video_error_or_removed'
 ]
-df = df.drop(columns=columns_to_drop, errors='ignore')  # 
-# Kiểm tra duplicate dựa trên video_id (mỗi video chỉ nên xuất hiện 1 lần trong trending)
+df = df.drop(columns=columns_to_drop, errors='ignore')
+
+# Drop duplicates
 df = df.drop_duplicates(subset=['video_id'], keep='first')
-# Fill missing values cho numeric columns bằng median
+
+# Fill missing values
 numeric_cols = ['view_count', 'likes', 'dislikes', 'comment_count']
 df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
-
-# Fill missing tags với empty string
 df['tags'] = df['tags'].fillna('')
-# Chuyển publishedAt và trending_date sang datetime
+
+# Convert datetime
 df['publishedAt'] = pd.to_datetime(df['publishedAt'])
 df['trending_date'] = pd.to_datetime(df['trending_date'])
 
-# Tính thời gian từ lúc publish đến khi trending (đơn vị: giờ)
+# Calculate hours_to_trend (handle invalid values)
 df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+df = df[df['hours_to_trend'] >= 0]  # Remove invalid records (trending before publish)
 
-# Kiểm tra phân phối của target variable
-print(df['hours_to_trend'].describe())
-# Giả sử có file JSON chứa mapping categoryId sang tên category
-import json
+# Remove outliers (e.g., videos trending after 1 month)
+Q99 = df['hours_to_trend'].quantile(0.99)
+df = df[df['hours_to_trend'] <= Q99]
+
+# Map categoryId to category name
 with open('US_category_id.json', 'r') as f:
     category_map = json.load(f)
-
-# Tạo dictionary để map categoryId sang category name
 category_id_to_name = {int(item['id']): item['snippet']['title'] for item in category_map['items']}
 df['category_name'] = df['categoryId'].map(category_id_to_name)
 
-# Kiểm tra các categories
-print("Unique categories:", df['category_name'].unique())
+# Text preprocessing
+stop_words = set(stopwords.words('english'))
 
-# Title length
-df['title_length'] = df['title'].str.len()
+def clean_tags(tags):
+    if tags == '[none]': 
+        return []
+    return [tag.strip().lower() for tag in tags.split('|') if tag.strip()]
 
-def clean_tags(tag):
-    if tag == '[none]': return []
-    return tag.lower().replace('"','').split('|')
 df['tags'] = df['tags'].apply(clean_tags)
+df['num_tags'] = df['tags'].apply(len)  # Count number of tags
 
-def clean_titles(title):
+def clean_title(title):
     tokens = title.lower().split()
-    cleaned = []
-    sw = set(stopwords.words('english'))
-    for token in tokens:
-        if token.startswith('$') or token.isnumeric() or not token.isalnum() or token in sw:  # Remove money amount, non-alphanumeric tokens, or stopwords
-            continue
-        else:
-            cleaned.append(token)
+    cleaned = [token for token in tokens 
+               if token.isalpha() and token not in stop_words]
     return ' '.join(cleaned)
 
-df['title_cl'] = df['title'].apply(clean_titles)
-# Chọn các features quan trọng cho model
+df['title_cleaned'] = df['title'].apply(clean_title)
+df['title_length'] = df['title_cleaned'].str.len()
+df['title_sentiment'] = df['title_cleaned'].apply(lambda x: TextBlob(x).sentiment.polarity)
+
+# Time-based features
+df['publish_hour'] = df['publishedAt'].dt.hour
+df['publish_dayofweek'] = df['publishedAt'].dt.dayofweek  # 0=Monday
+
+# Final features
 final_features = [
     'view_count', 'likes', 'dislikes', 'comment_count',
     'title_length', 'num_tags', 'title_sentiment',
+    'publish_hour', 'publish_dayofweek',
     'categoryId', 'hours_to_trend'
 ]
 df_final = df[final_features]
 
-# Lưu dữ liệu đã xử lý
+# Save processed data
 df_final.to_csv('processed_youtube_trending.csv', index=False)
+print("✅ Preprocessing completed! Shape:", df_final.shape)
