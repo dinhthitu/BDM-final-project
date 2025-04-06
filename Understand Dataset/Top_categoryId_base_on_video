@@ -3,11 +3,11 @@ import json
 from tabulate import tabulate  # For pretty-printing tables
 
 # 1. Load data
-df = pd.read_csv('US_youtube_trending_data.csv')
+df = pd.read_csv('US_youtube_trending_data.csv')    #  đổi sang file processed data + import
 
 # 2. Load category mapping
-with open('category_id_to_name.json', 'r') as f:
-    category_names = json.load(f)
+ # with open('category_id_to_name.json', 'r') as f:
+   #  category_names = json.load(f)
 
 # 3. Calculate video counts and percentages
 category_stats = (
