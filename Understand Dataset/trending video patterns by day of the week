@@ -1,70 +1,43 @@
 import pandas as pd
-import json
 import matplotlib.pyplot as plt
-from datetime import datetime
 import seaborn as sns
+from preprocessing import preprocess_data  # Import hàm tiền xử lý
 
-def analyze_trending_patterns(csv_path, json_path):
-    """Phân tích toàn diện: Ngày trong tuần, Giờ đăng, Danh mục"""
-    # 1. Load và tiền xử lý
-    df = pd.read_csv(csv_path)
-    with open(json_path, encoding="utf-8") as f:
-        raw = json.load(f)
-        categories = {
-            int(item["id"]): item["snippet"]["title"]
-            for item in raw["items"]
-            if item["snippet"]["assignable"]  # Chỉ lấy category assignable
-        }
+def analyze_trending_patterns():
+    """Phân tích trending patterns sử dụng dữ liệu đã được tiền xử lý"""
+    # 1. Load dữ liệu đã qua xử lý
+    df = preprocess_data()  # Lấy dữ liệu đã được xử lý
     
-    # 2. Chuẩn hóa datetime
-    df['trending_date'] = pd.to_datetime(df['trending_date'])
-    df['publishedAt'] = pd.to_datetime(df['publishedAt'])
+    # 2. Kiểm tra và bổ sung các feature cần thiết cho phân tích này
+    if 'day_of_week' not in df.columns:
+        df['day_of_week'] = df['trending_date'].dt.day_name()
     
-    # 3. Trích xuất features
-    df['day_of_week'] = df['trending_date'].dt.day_name()
-    df['publish_hour'] = df['publishedAt'].dt.hour
-    df['category_name'] = df['categoryId'].map(categories)
-    df['time_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+    # 3. Tạo visualization (heatmap)
+    plt.figure(figsize=(12, 8))
     
-    # 4. Tạo visualization
-    fig = plt.figure(figsize=(18, 12))
-    gs = fig.add_gridspec(3, 2)
+    # Chuẩn bị dữ liệu cho heatmap
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    heatmap_data = (df.groupby(['day_of_week', 'category_name'])
+                  .size()
+                  .unstack()
+                  .fillna(0)
+                  .reindex(day_order))
     
-    # 4.1. Phân bổ theo giờ đăng
-    plt.subplot(1, 2, 2)  # Sửa lỗi indent ở đây
-    hour_data = df.groupby(['category_name', 'publish_hour']).size().unstack().fillna(0)
+    # Vẽ heatmap
+    sns.heatmap(heatmap_data.T, 
+               cmap='YlGnBu', 
+               annot=True, 
+               fmt='.0f', 
+               cbar_kws={'label': 'Số lượng video'})
     
-    # Chọn top 10 danh mục để trực quan hóa rõ ràng
-    top_categories = hour_data.sum(axis=1).nlargest(10).index
-    hour_data.loc[top_categories].T.plot(
-        kind='area',
-        stacked=True,
-        alpha=0.7,
-        colormap='tab20',
-        linewidth=0
-    )
-    plt.title('GIỜ ĐĂNG VIDEO PHỔ BIẾN THEO DANH MỤC', pad=20, fontweight='bold', fontsize=14)
-    plt.xlabel('Giờ trong ngày', fontsize=12)
-    plt.ylabel('Số lượng video', fontsize=12)
-    plt.legend(bbox_to_anchor=(1.05, 1), title='Danh mục')
-    plt.grid(alpha=0.3)
-    plt.xticks(range(0, 24, 2))
-    
-    plt.tight_layout()
-    plt.savefig('trending_analysis_2charts.png', dpi=150, bbox_inches='tight')
-    
-    # 4.2. Top categories theo ngày (heatmap)
-    ax3 = fig.add_subplot(gs[1:, :])
-    heatmap_data = df.groupby(['day_of_week', 'category_name']).size().unstack().fillna(0).reindex(day_order)
-    sns.heatmap(heatmap_data.T, cmap='YlGnBu', annot=True, fmt='.0f', ax=ax3, cbar_kws={'label': 'Số lượng video'})
-    ax3.set_title('Video trending theo ngày và danh mục', pad=20)
-    ax3.set_xlabel('')
-    ax3.set_ylabel('Danh mục')
+    plt.title('Video trending theo ngày và danh mục', pad=20, fontweight='bold')
+    plt.xlabel('')
+    plt.ylabel('Danh mục')
     
     plt.tight_layout()
     plt.savefig('trending_analysis.png', dpi=150)
     
-    # 5. Xuất kết quả chi tiết
+    # 4. Xuất kết quả chi tiết
     results = []
     for cat in df['category_name'].unique():
         cat_data = df[df['category_name'] == cat]
@@ -73,7 +46,7 @@ def analyze_trending_patterns(csv_path, json_path):
         avg_time_to_trend = cat_data['time_to_trend'].median()
         
         results.append({
-'Danh mục': cat,
+            'Danh mục': cat,
             'Ngày đỉnh': peak_day,
             'Giờ đăng trung bình': f"{avg_hour:.1f}",
             'Thời gian lên trending (giờ)': f"{avg_time_to_trend:.1f}",
@@ -89,5 +62,5 @@ def analyze_trending_patterns(csv_path, json_path):
 
     return results_df.sort_values('Số video', ascending=False)
 
-# Cách sử dụng
-results = analyze_trending_patterns('US_youtube_trending_data.csv', 'category_id.json')
+if __name__ == "__main__":
+    results = analyze_trending_patterns()
