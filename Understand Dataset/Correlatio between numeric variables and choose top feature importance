@@ -1,1 +1,48 @@
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 
+# 1. Tính correlation giữa TẤT CẢ features và target (hours_to_trend)
+if isinstance(X_train, pd.DataFrame):
+    # Nếu X_train là DataFrame
+    corr_with_target = pd.DataFrame({
+        'Feature': X_train.columns,
+        'Correlation_with_Target': [X_train[col].corr(y_train) for col in X_train.columns]
+    }).sort_values('Correlation_with_Target', key=abs, ascending=False)
+else:
+    # Nếu X_train là numpy array
+    corr_with_target = pd.DataFrame({
+        'Feature': [f"Feature_{i}" for i in range(X_train.shape[1])],
+        'Correlation_with_Target': [np.corrcoef(X_train[:, i], y_train)[0, 1] for i in range(X_train.shape[1])]
+    }).sort_values('Correlation_with_Target', key=abs, ascending=False)
+
+# 2. Kết hợp với feature importance từ best model
+if hasattr(best_model, 'feature_importances_'):
+    corr_with_target['Importance'] = best_model.feature_importances_
+elif hasattr(best_model, 'coef_'):
+    corr_with_target['Importance'] = np.abs(best_model.coef_.flatten())
+
+# 3. Chọn feature quan trọng nhất (kết hợp cả correlation và importance)
+corr_with_target['Composite_Score'] = (
+    corr_with_target['Correlation_with_Target'].abs() * corr_with_target['Importance']
+)
+top_features = corr_with_target.sort_values('Composite_Score', ascending=False).head(10)
+
+# 4. Visualize kết quả
+plt.figure(figsize=(12, 6))
+sns.barplot(
+    x='Composite_Score', 
+    y='Feature', 
+    data=top_features,
+    palette='viridis'
+)
+plt.title('Top Features Affecting hours_to_trend\n(Correlation + Model Importance)')
+plt.xlabel('Combined Importance Score')
+plt.tight_layout()
+plt.show()
+
+# 5. In ra feature ảnh hưởng mạnh nhất
+most_important_feature = top_features.iloc[0]['Feature']
+print(f"\n🔍 MOST IMPORTANT FEATURE TO 'hours_to_trend': {most_important_feature}")
+print("\n📊 Top 10 Features Summary:")
+print(top_features[['Feature', 'Correlation_with_Target', 'Importance', 'Composite_Score']])
