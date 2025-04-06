@@ -10,7 +10,7 @@ df = pd.read_csv('US_youtube_trending_data.csv')
 # Drop unnecessary columns
 columns_to_drop = [
     'thumbnail_link', 'comments_disabled', 'ratings_disabled',
-    'description', 'channelId', 'channelTitle', 'video_error_or_removed'
+    'description', 'channelId', 'channelTitle'
 ]
 df = df.drop(columns=columns_to_drop, errors='ignore')
 
