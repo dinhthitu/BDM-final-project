@@ -1,16 +1,26 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from preprocessing import preprocess_data  # Import hàm tiền xử lý
+from Preprocessing import df_final  # Import hàm tiền xử lý
+import json
 
 def analyze_trending_patterns():
     """Phân tích trending patterns sử dụng dữ liệu đã được tiền xử lý"""
     # 1. Load dữ liệu đã qua xử lý
-    df = preprocess_data()  # Lấy dữ liệu đã được xử lý
+    df = df_final  # Lấy dữ liệu đã được xử lý
     
     # 2. Kiểm tra và bổ sung các feature cần thiết cho phân tích này
     if 'day_of_week' not in df.columns:
         df['day_of_week'] = df['trending_date'].dt.day_name()
+    with open('category_id_to_name.json', 'r') as f:
+        category_map = json.load(f)
+
+# Create mapping from categoryId to category name
+    category_id_to_name = {int(key): value for key, value in category_map.items()}
+
+# Map categoryId to category_name using the mapping
+    df['category_name'] = df['categoryId'].map(category_id_to_name)
+
     
     # 3. Tạo visualization (heatmap)
     plt.figure(figsize=(12, 8))
@@ -43,7 +53,7 @@ def analyze_trending_patterns():
         cat_data = df[df['category_name'] == cat]
         peak_day = cat_data['day_of_week'].value_counts().idxmax()
         avg_hour = cat_data['publish_hour'].mean()
-        avg_time_to_trend = cat_data['time_to_trend'].median()
+        avg_time_to_trend = cat_data['hours_to_trend'].median()
         
         results.append({
             'Danh mục': cat,
