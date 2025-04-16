@@ -1,6 +1,9 @@
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
+from TrainingModel import best_model_name, X_train, y_train, models
+
 
 # 1. Tính correlation giữa TẤT CẢ features và target (hours_to_trend)
 if isinstance(X_train, pd.DataFrame):
@@ -15,6 +18,8 @@ else:
         'Feature': [f"Feature_{i}" for i in range(X_train.shape[1])],
         'Correlation_with_Target': [np.corrcoef(X_train[:, i], y_train)[0, 1] for i in range(X_train.shape[1])]
     }).sort_values('Correlation_with_Target', key=abs, ascending=False)
+
+best_model = models[best_model_name]
 
 # 2. Kết hợp với feature importance từ best model
 if hasattr(best_model, 'feature_importances_'):
@@ -46,3 +51,5 @@ most_important_feature = top_features.iloc[0]['Feature']
 print(f"\n🔍 MOST IMPORTANT FEATURE TO 'hours_to_trend': {most_important_feature}")
 print("\n📊 Top 10 Features Summary:")
 print(top_features[['Feature', 'Correlation_with_Target', 'Importance', 'Composite_Score']])
+
+  
