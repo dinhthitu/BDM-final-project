@@ -35,7 +35,7 @@ Q99 = df['hours_to_trend'].quantile(0.99)
 df = df[df['hours_to_trend'] <= Q99]
 
 # Map categoryId to category name
-with open('US_category_id.json', 'r') as f:
+with open('category_ids.json', 'r') as f:
     category_map = json.load(f)
 category_id_to_name = {int(item['id']): item['snippet']['title'] for item in category_map['items']}
 df['category_name'] = df['categoryId'].map(category_id_to_name)
@@ -67,9 +67,10 @@ df['publish_dayofweek'] = df['publishedAt'].dt.dayofweek  # 0=Monday
 
 # Final features
 final_features = [
-    'view_count', 'likes', 'dislikes', 'comment_count',
-    'title_length', 'num_tags', 'title_sentiment',
+    'view_count', 'likes', 'dislikes', 'comment_count', 
+    'title_length', 'num_tags', 'title_sentiment', 
     'publish_hour', 'publish_dayofweek',
+    'trending_date', 'tags',
     'categoryId', 'hours_to_trend'
 ]
 df_final = df[final_features]
