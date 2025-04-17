@@ -21,7 +21,8 @@ category_avg = category_avg.rename(index=category_names)
 # 5. In kết quả
 print("=== Average Hours to Trend by Category ===")
 print(category_avg.to_string(float_format="%.2f"))  # Làm tròn 2 số thập phân
-
+category_avg.to_csv('avg_hours_to_trend_by_category.csv', float_format="%.2f")
+print("\n✅ Saved CSV to 'avg_hours_to_trend_by_category.csv'")
 # 6. Visualize
 plt.figure(figsize=(10, 6))
 category_avg.plot(kind='barh', color='skyblue')
