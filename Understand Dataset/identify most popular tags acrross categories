@@ -42,22 +42,22 @@ tags_df['Percentage'] = (tags_df['Count'] / len(df) * 100).round(2)
 print(f"=== Top {top_n} Most Popular Tags Across All Categories ===")
 print(tabulate(tags_df, headers='keys', tablefmt='pretty', showindex=False))
 
-# 8. Optional: Analyze tags by category
 print("\n=== Tag Popularity by Category ===")
-category_tags = {}
+category_tags_list = []
 
 for category_id, category_name in category_names.items():
     category_videos = df[df['categoryId'] == int(category_id)]
     cat_tags = [tag for sublist in category_videos['tags_processed'] for tag in sublist]
-    cat_tag_counts = Counter(cat_tags).most_common(5)
-    category_tags[category_name] = cat_tag_counts
+    cat_tag_counts = Counter(cat_tags).most_common(5)  # top 5 tags per category
+    for tag, count in cat_tag_counts:
+        category_tags_list.append({'Category': category_name, 'Tag': tag, 'Count': count})
 
-# Print top 5 tags per category
-for category, tags in category_tags.items():
-    print(f"\n{category}:")
-    for tag, count in tags:
-        print(f"  - {tag} ({count} videos)")
+# Convert to DataFrame
+category_tags_df = pd.DataFrame(category_tags_list)
+
+# Display sample
+print(tabulate(category_tags_df, headers='keys', tablefmt='pretty', showindex=False))
 
 # 9. Save results
-tags_df.to_csv('most_popular_tags_ver2.csv', index=False)
-print("\n✅ Saved results to 'most_popular_tags.csv'")
+category_tags_df.to_csv('most_popular_tags_by_category.csv', index=False)
+print("\n✅ Saved results to 'most_popular_tags_by_category.csv'")
