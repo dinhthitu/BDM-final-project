@@ -28,9 +28,9 @@ df['trending_date'] = pd.to_datetime(df['trending_date'])
 
 # Calculate hours_to_trend (handle invalid values)
 df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
-df = df[df['hours_to_trend'] >= 0]  # Remove invalid records (trending before publish)
+df = df[df['hours_to_trend'] >= 0]  # Remove invalid records
 
-# Remove outliers (e.g., videos trending after 1 month)
+# Remove outliers
 Q99 = df['hours_to_trend'].quantile(0.99)
 df = df[df['hours_to_trend'] <= Q99]
 
@@ -49,7 +49,7 @@ def clean_tags(tags):
     return [tag.strip().lower() for tag in tags.split('|') if tag.strip()]
 
 df['tags'] = df['tags'].apply(clean_tags)
-df['num_tags'] = df['tags'].apply(len)  # Count number of tags
+df['num_tags'] = df['tags'].apply(len)
 
 def clean_title(title):
     tokens = title.lower().split()
@@ -63,7 +63,17 @@ df['title_sentiment'] = df['title_cleaned'].apply(lambda x: TextBlob(x).sentimen
 
 # Time-based features
 df['publish_hour'] = df['publishedAt'].dt.hour
-df['publish_dayofweek'] = df['publishedAt'].dt.dayofweek  # 0=Monday
+df['publish_dayofweek'] = df['publishedAt'].dt.dayofweek
+
+# Calculate engagement and velocity features
+df['engagement_rate'] = (df['likes'] + df['dislikes'] + df['comment_count']) / (df['view_count'] + 1e-6)
+df['like_dislike_ratio'] = df['likes'] / (df['dislikes'] + 1e-6)
+df['comment_view_ratio'] = df['comment_count'] / (df['view_count'] + 1e-6)
+df['dislikes_per_comment'] = df['dislikes'] / (df['comment_count'] + 1e-6)
+df['days_since_publication'] = (df['trending_date'] - df['publishedAt']).dt.days
+df['likes_per_day'] = df['likes'] / (df['days_since_publication'] + 1e-6)
+df['comments_per_day'] = df['comment_count'] / (df['days_since_publication'] + 1e-6)
+df['view_velocity'] = np.log(df['view_count'] + 1) / (df['days_since_publication'] + 1)
 
 # Final features
 final_features = [
@@ -71,10 +81,13 @@ final_features = [
     'title_length', 'num_tags', 'title_sentiment', 
     'publish_hour', 'publish_dayofweek',
     'trending_date', 'tags',
-    'categoryId', 'hours_to_trend'
+    'categoryId', 'hours_to_trend',
+    'engagement_rate', 'like_dislike_ratio', 'comment_view_ratio',
+    'dislikes_per_comment', 'days_since_publication', 'likes_per_day',
+    'comments_per_day', 'view_velocity'
 ]
 df_final = df[final_features]
 
 # Save processed data
-df_final.to_csv('processed_youtube_trending.csv', index=False)
+df_final.to_csv('processed_youtube_trending.csv', index=True)  # Lưu chỉ số gốc
 print("✅ Preprocessing completed! Shape:", df_final.shape)
