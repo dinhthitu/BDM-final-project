@@ -5,51 +5,87 @@ import numpy as np
 from TrainingModel import best_model_name, X_train, y_train, models
 
 
-# 1. Tính correlation giữa TẤT CẢ features và target (hours_to_trend)
-if isinstance(X_train, pd.DataFrame):
-    # Nếu X_train là DataFrame
-    corr_with_target = pd.DataFrame({
-        'Feature': X_train.columns,
-        'Correlation_with_Target': [X_train[col].corr(y_train) for col in X_train.columns]
-    }).sort_values('Correlation_with_Target', key=abs, ascending=False)
-else:
-    # Nếu X_train là numpy array
-    corr_with_target = pd.DataFrame({
-        'Feature': [f"Feature_{i}" for i in range(X_train.shape[1])],
-        'Correlation_with_Target': [np.corrcoef(X_train[:, i], y_train)[0, 1] for i in range(X_train.shape[1])]
-    }).sort_values('Correlation_with_Target', key=abs, ascending=False)
+# 1. Chuẩn bị dữ liệu
+# Tải lại dữ liệu gốc để lấy thêm các cột như title_length, tag_count, publish_hour
+df = pd.read_csv('preprocessed_youtube_trending_data.csv')
 
+# Tính toán các đặc trưng bổ sung
+# title_length
+df['title_length'] = df['title'].apply(len)
+
+# tag_count
+df['tag_count'] = df['tags'].apply(lambda x: len(str(x).split('|')) if x != '[none]' else 0)
+
+# publish_hour
+df['publishedAt'] = pd.to_datetime(df['publishedAt'])
+df['publish_hour'] = df['publishedAt'].dt.hour
+
+# hours_to_trend
+df['trending_date'] = pd.to_datetime(df['trending_date'])
+df['hours_to_trend'] = (df['trending_date'] - df['publishedAt']).dt.total_seconds() / 3600
+
+# Lọc các cột cần thiết cho heatmap (dựa trên hình bạn cung cấp)
+numeric_vars = ['view_count', 'likes', 'comment_count', 'title_length', 'tag_count', 'publish_hour', 'hours_to_trend']
+data_for_heatmap = df[numeric_vars]
+
+# 2. Tính ma trận tương quan giữa các biến số
+corr_matrix = data_for_heatmap.corr()
+
+# 3. Vẽ heatmap tương quan giữa các biến
+plt.figure(figsize=(10, 8))
+sns.heatmap(
+    corr_matrix,
+    annot=True,           # Hiển thị giá trị trên ô
+    cmap='coolwarm',      # Thang màu từ xanh (âm) đến đỏ (dương)
+    vmin=-1, vmax=1,      # Giới hạn thang màu từ -1 đến 1
+    center=0,             # Đặt giá trị 0 ở giữa thang màu
+    fmt='.2f',            # Định dạng 2 chữ số thập phân
+    square=True,          # Đảm bảo các ô là hình vuông
+    cbar_kws={'label': 'Correlation'}  # Nhãn cho thanh màu
+)
+plt.title('Correlation Between Numeric Variables')
+plt.tight_layout()
+plt.savefig('correlation_heatmap.png')
+plt.show()
+
+# 4. Tính correlation giữa các đặc trưng và target (view_velocity)
+# Sử dụng X_train và y_train từ TrainingModel
+corr_with_target = pd.DataFrame({
+    'Feature': X_train.columns,
+    'Correlation_with_Target': [X_train[col].corr(y_train) for col in X_train.columns]
+}).sort_values('Correlation_with_Target', key=abs, ascending=False)
+
+# 5. Kết hợp với feature importance từ best model
 best_model = models[best_model_name]
-
-# 2. Kết hợp với feature importance từ best model
 if hasattr(best_model, 'feature_importances_'):
     corr_with_target['Importance'] = best_model.feature_importances_
 elif hasattr(best_model, 'coef_'):
     corr_with_target['Importance'] = np.abs(best_model.coef_.flatten())
+else:
+    corr_with_target['Importance'] = 0  # Nếu mô hình không có feature importance
 
-# 3. Chọn feature quan trọng nhất (kết hợp cả correlation và importance)
+# 6. Tính điểm tổng hợp (Composite Score) để xếp hạng đặc trưng
 corr_with_target['Composite_Score'] = (
     corr_with_target['Correlation_with_Target'].abs() * corr_with_target['Importance']
 )
 top_features = corr_with_target.sort_values('Composite_Score', ascending=False).head(10)
 
-# 4. Visualize kết quả
+# 7. Visualize top features bằng bar plot
 plt.figure(figsize=(12, 6))
 sns.barplot(
-    x='Composite_Score', 
-    y='Feature', 
+    x='Composite_Score',
+    y='Feature',
     data=top_features,
     palette='viridis'
 )
-plt.title('Top Features Affecting hours_to_trend\n(Correlation + Model Importance)')
+plt.title('Top Features Affecting view_velocity\n(Correlation + Model Importance)')
 plt.xlabel('Combined Importance Score')
 plt.tight_layout()
+plt.savefig('top_features_barplot.png')
 plt.show()
 
-# 5. In ra feature ảnh hưởng mạnh nhất
+# 8. In kết quả
 most_important_feature = top_features.iloc[0]['Feature']
-print(f"\n🔍 MOST IMPORTANT FEATURE TO 'hours_to_trend': {most_important_feature}")
+print(f"\n🔍 MOST IMPORTANT FEATURE TO 'view_velocity': {most_important_feature}")
 print("\n📊 Top 10 Features Summary:")
-print(top_features[['Feature', 'Correlation_with_Target', 'Importance', 'Composite_Score']])
-
-  
+print(top_features[['Feature', 'Correlation_with_Target', 'Importance', 'Composite_Score']].round(3))
