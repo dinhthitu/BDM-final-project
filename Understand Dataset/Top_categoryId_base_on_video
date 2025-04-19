@@ -1,33 +1,43 @@
 import pandas as pd
 import json
-from tabulate import tabulate  # For pretty-printing tables
+from tabulate import tabulate
 
 # 1. Load data
-df = pd.read_csv('US_youtube_trending_data.csv')    #  đổi sang file processed data + import
+df = pd.read_csv('US_youtube_trending_data.csv')
 
 # 2. Load category mapping
 with open('category_id_to_name.json', 'r') as f:
-   category_names = json.load(f)
+    category_names = json.load(f)
 
-# 3. Calculate video counts and percentages
-category_stats = (
-    df['categoryId']
-    .value_counts()
-    .rename(index=category_names)
-    .reset_index()
-)
-category_stats.columns = ['Category', 'Video Count']
-category_stats['Percentage'] = (category_stats['Video Count'] / len(df) * 100).round(2)
+# 3. Group theo categoryId và tính toán
+stats = df.groupby('categoryId').agg({
+    'view_count': 'mean',
+    'likes': 'mean',
+    'dislikes': 'mean',
+    'comment_count': 'mean',
+    'video_id': 'count'
+}).rename(columns={
+    'view_count': 'Avg Views',
+    'likes': 'Avg Likes',
+    'dislikes': 'Avg Dislikes',
+    'comment_count': 'Avg Comments',
+    'video_id': 'Video Count'
+}).reset_index()
 
-# 4. Display ALL categories in a formatted table
-print("=== All Categories by Trending Frequency ===")
-print(tabulate(
-    category_stats,
-    headers=['STT', 'Category', 'Video Count', 'Percentage (%)'],
-    showindex=True,
-    tablefmt='pretty'
-))
+# 4. Thêm tên danh mục (Category Name)
+stats['Category'] = stats['categoryId'].astype(str).map(category_names)
 
-# 5. Optional: Save to CSV
-category_stats.to_csv('category_stats.csv', index=False)
-print("\n✅ Saved full results to 'category_stats.csv'")
+# 5. Thêm phần trăm
+stats['Percentage'] = (stats['Video Count'] / len(df) * 100).round(2)
+
+# 6. Định dạng cột
+stats = stats[['Category', 'Video Count', 'Percentage', 'Avg Views', 'Avg Likes', 'Avg Dislikes', 'Avg Comments']]
+stats = stats.round(2)
+
+# 7. Hiển thị bảng
+print("=== All Categories with Engagement Stats ===")
+print(tabulate(stats, headers='keys', showindex=True, tablefmt='pretty'))
+
+# 8. Lưu ra file
+stats.to_csv('category_stats.csv', index=False)
+print("\n✅ Saved updated results with engagement stats to 'category_stats.csv'")
