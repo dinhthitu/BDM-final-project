@@ -5,6 +5,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import xgboost as xgb
 import lightgbm as lgb
+from xgboost import XGBRegressor
 
 # Load dữ liệu
 df = pd.read_csv('US_youtube_trending_data.csv')
@@ -46,6 +47,21 @@ full_data = full_data.replace([np.inf, -np.inf], np.nan).dropna()
 # Tách lại
 X_clean = full_data[features]
 y_clean = full_data['target']
+# Lưu lại file đã được tiền xử lý
+preprocessed_data = X_clean.copy()
+preprocessed_data[target] = y_clean
+
+# Thêm các thông tin khác nếu cần (ví dụ: video_id, title nếu bạn muốn giữ lại)
+additional_columns = ['video_id', 'tags', 'title', 'publishedAt', 'trending_date', 'categoryId']  # Thay đổi theo nhu cầu
+for col in additional_columns:
+    if col in df.columns:
+        # Lấy chỉ số tương ứng từ dataframe gốc
+        preprocessed_data[col] = df.loc[preprocessed_data.index, col]
+
+# Lưu thành file CSV
+preprocessed_data.to_csv('preprocessed_youtube_trending_data.csv', index=False)
+print("✅ Đã lưu file tiền xử lý: 'preprocessed_youtube_trending_data.csv'")
+
 
 # Chia tập train/test
 X_train, X_test, y_train, y_test = train_test_split(X_clean, y_clean, test_size=0.2, random_state=42)
@@ -56,24 +72,24 @@ dtrain = xgb.DMatrix(X_train, label=y_train)
 dtest = xgb.DMatrix(X_test, label=y_test)
 
 # Tham số
-params_xgb = {
-    'objective': 'reg:squarederror',
-    'eval_metric': 'rmse',
-    'eta': 0.1,
-    'max_depth': 6,
-    'subsample': 0.8,
-    'colsample_bytree': 0.8,
-    'seed': 42,
-    'gamma': 0.1,
-    'min_child_weight': 3
-}
+model_xgb = XGBRegressor(
+    objective='reg:squarederror',
+    eval_metric='rmse',
+    learning_rate=0.1,
+    max_depth=6,
+    subsample=0.8,
+    colsample_bytree=0.8,
+    gamma=0.1,
+    min_child_weight=3,
+    random_state=42,
+    n_estimators=200
+)
 
 # Huấn luyện
-num_rounds = 200
-model_xgb = xgb.train(params_xgb, dtrain, num_rounds)
+model_xgb.fit(X_train, y_train)
 
 # Dự đoán
-y_pred_xgb = model_xgb.predict(dtest)
+y_pred_xgb = model_xgb.predict(X_test)
 
 # Đánh giá
 mae_xgb = mean_absolute_error(y_test, y_pred_xgb)
@@ -114,8 +130,9 @@ params_lgb = {
 # Huấn luyện
 model_lgb = lgb.train(params_lgb,
                       train_data,
-                      num_boost_round=200,
-                      valid_sets=[test_data])
+                      num_boost_round=100,
+                      valid_sets=[test_data],
+                     )
 
 
 # Dự đoán
@@ -161,3 +178,36 @@ else:
     best_predictions = y_pred_lgb
 
 print(f"\n✅ Best Model Selected: {best_model_name}")
+import joblib
+
+# Lưu model XGBoost để test.py có thể dùng lại
+if best_model_name == "XGBoost":
+    joblib.dump(best_model, 'model_xgb.joblib')
+X_test.to_csv('X_test.csv', index=True)
+X_train.to_csv('X_train.csv', index=False)
+
+import shap
+
+# Sau khi huấn luyện mô hình
+import joblib
+import shap
+
+# Lưu model tốt nhất
+if best_model_name == "XGBoost":
+    joblib.dump(model_xgb, 'model_xgb.joblib')  # model_xgb là XGBRegressor
+    explainer = shap.Explainer(model_xgb, X_test)
+    shap_values = explainer(X_test)
+    joblib.dump(shap_values, 'shap_values_xgb.joblib')
+    shap.summary_plot(shap_values, X_test)
+
+elif best_model_name == "LightGBM":
+    joblib.dump(model_lgb, 'model_lgb.joblib')
+    explainer = shap.Explainer(model_lgb, X_test)
+    shap_values = explainer(X_test)
+    joblib.dump(shap_values, 'shap_values_lgb.joblib')
+    shap.summary_plot(shap_values, X_test)
+models = {
+    "XGBoost": model_xgb,
+    "LightGBM": model_lgb
+}
+__all__ = ['best_model_name', 'X_train', 'y_train', 'models']
