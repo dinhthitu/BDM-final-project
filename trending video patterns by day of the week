@@ -1,0 +1,87 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import json
+
+def analyze_trending_patterns(country_code):
+    # Load dữ liệu đã qua xử lý
+    df = pd.read_csv(f'{country_code}_processed_youtube_trending.csv')
+    df['trending_date'] = pd.to_datetime(df['trending_date'])
+
+    # Kiểm tra và bổ sung các feature cần thiết cho phân tích này
+    if 'day_of_week' not in df.columns:
+        df['day_of_week'] = df['trending_date'].dt.day_name()
+    with open(f'{country_code}_category_id_to_name.json', 'r') as f:
+        category_map = json.load(f)
+
+    # Create mapping from categoryId to category name
+    category_id_to_name = {int(key): value for key, value in category_map.items()}
+
+    # Map categoryId to category_name using the mapping
+    df['category_name'] = df['categoryId'].map(category_id_to_name)
+
+    # Tạo visualization (heatmap)
+    plt.figure(figsize=(12, 8))
+    
+    # Chuẩn bị dữ liệu cho heatmap
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    heatmap_data = (df.groupby(['day_of_week', 'category_name'])
+                  .size()
+                  .unstack()
+                  .fillna(0)
+                  .reindex(day_order))
+    
+    # Vẽ heatmap
+    sns.heatmap(heatmap_data.T, 
+               cmap='YlGnBu', 
+               annot=True, 
+               fmt='.0f', 
+               cbar_kws={'label': 'Số lượng video'})
+    
+    plt.title(f'Video trending theo ngày và danh mục ({country_code})', pad=20, fontweight='bold')
+    plt.xlabel('')
+    plt.ylabel('Danh mục')
+    
+    plt.tight_layout()
+    plt.savefig(f'{country_code}_output/{country_code}_trending_analysis.png', dpi=150)
+    plt.close()
+    
+    # Xuất kết quả chi tiết
+    results = []
+    for cat in df['category_name'].unique():
+        cat_data = df[df['category_name'] == cat]
+        # Kiểm tra nếu cat_data rỗng
+        if len(cat_data) == 0:
+            print(f"⚠️ Không có dữ liệu cho danh mục {cat} ở quốc gia {country_code}")
+            continue
+        
+        peak_day = cat_data['day_of_week'].value_counts().idxmax()
+        avg_hour = cat_data['publish_hour'].mean()
+        avg_time_to_trend = cat_data['hours_to_trend'].median()
+        
+        results.append({
+            'Danh mục': cat,
+            'Ngày đỉnh': peak_day,
+            'Giờ đăng trung bình': f"{avg_hour:.1f}",
+            'Thời gian lên trending (giờ)': f"{avg_time_to_trend:.1f}",
+            'Số video': len(cat_data)
+        })
+    
+    # Kiểm tra nếu results rỗng (không có danh mục nào có dữ liệu)
+    if not results:
+        print(f"❌ Không có dữ liệu nào để phân tích cho quốc gia {country_code}")
+        return pd.DataFrame()
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(f'{country_code}_output/{country_code}_trending_stats_by_category.csv', index=False)
+    
+    print(f"✅ Phân tích hoàn tất cho {country_code}!")
+    print(f"- Biểu đồ: {country_code}_trending_analysis.png")
+    print(f"- Dữ liệu: {country_code}_trending_stats_by_category.csv")
+
+    return results_df.sort_values('Số video', ascending=False)
+
+if __name__ == "__main__":
+    countries = ['US', 'IN', 'BR', 'GB', 'KR']
+    for country in countries:
+        analyze_trending_patterns(country)
