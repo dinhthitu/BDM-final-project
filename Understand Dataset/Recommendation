@@ -1,0 +1,314 @@
+import pandas as pd
+import numpy as np
+import shap
+import json
+import joblib
+from collections import Counter
+import ast
+import warnings
+
+class YouTubeRecommendationSystem:
+    def __init__(self):
+        self.load_data()
+        self.setup_features()
+        self.X_test = None
+        self.shap_values = None
+        self.model = None
+        print("Columns in DataFrame:", self.df.columns.tolist())
+    
+    def load_data(self):
+        try:
+            # Load main dataset
+            self.df = pd.read_csv('preprocessed_youtube_trending_data.csv', index_col=0)
+            
+            # Load category name mapping
+            with open('category_id_to_name.json', 'r') as f:
+                self.category_names = json.load(f)
+            
+            # Load statistics files
+            self.category_stats = pd.read_csv('category_stats.csv')
+            self.trending_stats = pd.read_csv('trending_stats_by_category.csv')
+            self.tag_stats = pd.read_csv('most_popular_tags_by_category.csv')
+            self.hours_to_trend = pd.read_csv('avg_hours_to_trend_by_category.csv')
+            
+            print("✅ Data loaded successfully")
+        except Exception as e:
+            print(f"❌ Error loading data: {str(e)}")
+            raise
+
+    def setup_features(self):
+        self.features = [
+            'view_count', 'likes', 'dislikes', 'comment_count',
+            'engagement_rate', 'like_dislike_ratio', 'comment_view_ratio',
+            'dislikes_per_comment', 'days_since_publication', 'likes_per_day',
+            'comments_per_day'
+        ]
+    
+    def load_model_and_shap(self, model_path, shap_path, X_test_path):
+        try:
+            # Load test data with the same features used in training
+            self.X_test = pd.read_csv(X_test_path, index_col=0)
+            
+            # Ensure we only keep the features used in training
+            self.X_test = self.X_test[self.features]
+            
+            # Load model
+            self.model = joblib.load(model_path)
+            
+            # Load precomputed SHAP values
+            self.shap_values = joblib.load(shap_path)
+            
+            print("✅ Model and SHAP data loaded successfully")
+            
+        except Exception as e:
+            print(f"❌ Error loading model or SHAP data: {str(e)}")
+            raise
+    
+    def get_category_insights(self, category_id):
+        """Extract all insights for a category from EDA results"""
+        category_id_str = str(category_id)
+        category_id_int = int(category_id)
+        category_name = self.category_names.get(category_id_str, f"Category {category_id_str}")
+
+        insights = {
+            'name': category_name,
+            'general_stats': {},
+            'trending_patterns': {},
+            'tags': [],
+            'time_to_trend': {}
+        }
+
+        try:
+            # General statistics
+            if not self.category_stats.empty:
+                # So sánh với tên danh mục
+                stats = self.category_stats[self.category_stats['Category'] == category_name]
+                if not stats.empty:
+                    insights['general_stats'] = {
+                        'percentage': float(stats['Percentage'].values[0]),
+                        'avg_views': float(stats['Avg Views'].values[0]) if 'Avg Views' in stats else 0,
+                        'avg_likes': float(stats['Avg Likes'].values[0]) if 'Avg Likes' in stats else 0
+                    }
+
+            # Trending patterns
+            if not self.trending_stats.empty:
+                if 'categoryId' in self.trending_stats.columns:
+                    patterns = self.trending_stats[self.trending_stats['categoryId'] == category_id_int]
+                elif 'Danh mục' in self.trending_stats.columns:
+                    patterns = self.trending_stats[self.trending_stats['Danh mục'] == category_name]
+                else:
+                    patterns = pd.DataFrame()
+
+                if not patterns.empty:
+                    insights['trending_patterns'] = {
+                        'peak_day': patterns.iloc[0].get('Ngày đỉnh', 'N/A'),
+                        'peak_hour': patterns.iloc[0].get('Giờ đăng trung bình', 'N/A'),
+                        'avg_time': float(patterns.iloc[0].get('Thời gian lên trending (giờ)', 0))
+                    }
+
+            # Popular tags
+            if not self.tag_stats.empty:
+                tags_rows = self.tag_stats[self.tag_stats['Category'] == category_name]
+                if not tags_rows.empty:
+                    valid_tags = [tag for tag in tags_rows['Tag'].head(5).tolist() if tag != '[none]']
+                    insights['tags'] = valid_tags
+
+            # Time to trend
+            if not self.hours_to_trend.empty:
+                time_stats = self.hours_to_trend[self.hours_to_trend['categoryId'] == category_id_int]
+                if not time_stats.empty:
+                    insights['time_to_trend'] = {
+                        'avg': float(time_stats['hours_to_trend'].mean()),
+                        'median': float(time_stats['hours_to_trend'].median()),
+                        'std': float(time_stats['hours_to_trend'].std()) if not time_stats['hours_to_trend'].empty else 0
+                    }
+
+        except Exception as e:
+            print(f"Error getting insights for category {category_id}: {str(e)}")
+
+        return insights
+    
+    def generate_shap_recommendations(self, category_data):
+        """Generate recommendations based on SHAP analysis"""
+        recommendations = []
+        
+        try:
+            test_indices = self.X_test.index.intersection(category_data.index)
+            if len(test_indices) == 0:
+                return ["Không có đủ dữ liệu SHAP để phân tích"]
+            
+            test_positions = [list(self.X_test.index).index(idx) for idx in test_indices]
+            category_shap = self.shap_values[test_positions]
+            
+            # Sử dụng .values nếu là shap.Explanation
+            shap_values_array = category_shap.values if isinstance(category_shap, shap.Explanation) else category_shap
+            
+            shap_importance = pd.DataFrame({
+                'feature': self.features,
+                'mean_abs_shap': np.abs(shap_values_array).mean(axis=0)
+            }).sort_values('mean_abs_shap', ascending=False)
+            
+            top_features = shap_importance.head(3)
+            # Tính tổng mean_abs_shap của top 3 đặc trưng
+            total_shap = top_features['mean_abs_shap'].sum()
+            
+            for i, (feature, importance) in enumerate(top_features.values, 1):
+                corr = category_data[feature].corr(category_data['view_velocity'])
+                direction = "tích cực" if corr > 0 else "tiêu cực"
+                median_val = category_data[feature].median()
+                # Tính tỷ lệ phần trăm đóng góp
+                shap_percentage = (importance / total_shap * 100) if total_shap > 0 else 0
+                
+                # Tùy chỉnh khuyến nghị cho từng đặc trưng
+                if feature == 'view_count':
+                    rec = (f"{i}. Đạt ít nhất {median_val:,.0f} lượt xem - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'likes':
+                    rec = (f"{i}. Đạt ít nhất {median_val:,.0f} lượt thích - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'dislikes':
+                    rec = (f"{i}. Giữ số lượt không thích dưới {median_val:,.0f} - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'comment_count':
+                    rec = (f"{i}. Đạt ít nhất {median_val:,.0f} bình luận - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'engagement_rate':
+                    rec = (f"{i}. Tăng tương tác để đạt engagement rate > {median_val:.2%} - "
+                           f"tương quan {direction} với view velocity (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'like_dislike_ratio':
+                    rec = (f"{i}. Duy trì tỷ lệ like/dislike cao (> {median_val:.1f}) - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'comment_view_ratio':
+                    rec = (f"{i}. Đạt tỷ lệ bình luận/lượt xem > {median_val:.4f} - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'dislikes_per_comment':
+                    rec = (f"{i}. Giữ tỷ lệ không thích/bình luận dưới {median_val:.2f} - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'days_since_publication':
+                    rec = (f"{i}. Đăng video trong vòng {median_val:.0f} ngày gần đây - "
+                           f"ảnh hưởng {direction} đến tốc độ trending (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'likes_per_day':
+                    rec = (f"{i}. Đạt ít nhất {median_val:,.0f} lượt thích mỗi ngày - "
+                           f"ảnh hưởng {direction} đến tốc độ tăng trưởng (đóng góp {shap_percentage:.0f}%)")
+                elif feature == 'comments_per_day':
+                    rec = (f"{i}. Khuyến khích bình luận (> {median_val:,.0f}/ngày) - "
+                           f"ảnh hưởng {direction} mạnh (đóng góp {shap_percentage:.0f}%)")
+                
+                recommendations.append(rec)
+        
+        except Exception as e:
+            print(f"SHAP analysis error: {str(e)}")
+            recommendations = ["Không thể phân tích SHAP cho category này"]
+        
+        return recommendations
+    
+    def generate_eda_recommendations(self, insights):
+        """Generate recommendations based on EDA insights"""
+        recommendations = []
+        
+        if insights['trending_patterns']:
+            patterns = insights['trending_patterns']
+            rec = (f"- Đăng video vào {patterns['peak_day']} lúc {patterns['peak_hour']} giờ "
+                   f"để có thời gian trending nhanh (~{patterns['avg_time']:.1f} giờ)")
+            recommendations.append(rec)
+        
+        if insights['tags']:
+            rec = f"- Sử dụng tags phổ biến: {', '.join(insights['tags'])}"
+            recommendations.append(rec)
+        
+        if insights['time_to_trend']:
+            time_stats = insights['time_to_trend']
+            std = time_stats['std']
+            std_text = f"±{std:.1f}" if not np.isnan(std) else "không đủ dữ liệu để tính độ lệch"
+            rec = (f"- Thời gian lên trending trung bình: {time_stats['median']:.1f} giờ "
+                   f"(dao động {std_text} giờ)")
+            recommendations.append(rec)
+        
+        if insights['general_stats']:
+            stats = insights['general_stats']
+            rec = (f"- Category chiếm {stats['percentage']:.1f}% video trending, "
+                   f"lượt xem trung bình {stats['avg_views']:,.0f}, "
+                   f"lượt thích trung bình {stats['avg_likes']:,.0f}")
+            recommendations.append(rec)
+        
+        return recommendations if recommendations else ["Không có khuyến nghị từ phân tích EDA"]
+    
+    def get_recommendations(self, category_id):
+        """Main method to get all recommendations for a category"""
+        try:
+            category_id = str(category_id)
+            print(f"\nDebug: Checking category {category_id}")
+            
+            if category_id not in self.category_names:
+                print(f"Debug: Category {category_id} not in category_names")
+                return f"Category {category_id} không tồn tại"
+            
+            print(f"Debug: Category name: {self.category_names[category_id]}")
+            
+            insights = self.get_category_insights(category_id)
+            print("Debug: Insights:", insights)
+            
+            category_data = self.df[self.df['categoryId'] == int(category_id)]
+            print(f"Debug: Found {len(category_data)} videos")
+            
+            shap_recs = self.generate_shap_recommendations(category_data)
+            eda_recs = self.generate_eda_recommendations(insights)
+            
+            output = [
+                f"📊 *Recommendations for {insights['name']}*",
+                "="*50,
+                "\n🔍 *Key Factors (SHAP Analysis):*",
+                *shap_recs,
+                "\n💡 *Optimization Tips (EDA Insights):*",
+                *eda_recs
+            ]
+            
+            return "\n".join(output)
+        
+        except Exception as e:
+            import traceback
+            print(f"Debug: Full error traceback:\n{traceback.format_exc()}")
+            return f"Error generating recommendations: {str(e)}"
+
+if __name__ == "__main__":
+    recommender = YouTubeRecommendationSystem()
+    
+    # Load model and SHAP values
+    try:
+        recommender.load_model_and_shap(
+            model_path="model_xgb.joblib",
+            shap_path="shap_values_xgb.joblib",
+            X_test_path="X_test.csv"
+        )
+        print("✅ Model and SHAP data loaded successfully")
+    except Exception as e:
+        print(f"❌ Error loading model or SHAP data: {str(e)}")
+    
+    print("\n🎯 YouTube Content Recommendation System")
+    print("--------------------------------------")
+    print("Available categories:")
+    for cat_id, name in recommender.category_names.items():
+        print(f"- {cat_id}: {name}")
+    
+    while True:
+        user_input = input("\nEnter category ID or name (type 'exit' to quit): ").strip()
+        
+        if user_input.lower() == 'exit':
+            break
+        
+        category_id = None
+        if user_input.isdigit():
+            if user_input in recommender.category_names:
+                category_id = user_input
+        else:
+            for cid, name in recommender.category_names.items():
+                if user_input.lower() in name.lower():
+                    category_id = cid
+                    break
+        
+        if not category_id:
+            print("⚠️ Category not found")
+            continue
+        
+        recommendations = recommender.get_recommendations(category_id)
+        print("\n" + recommendations)
