@@ -36,6 +36,9 @@ def analyze_trending_patterns(country_code):
     category_id_to_name = {int(key): value for key, value in category_map.items()}
     df['category_name'] = df['categoryId'].map(category_id_to_name)
 
+    # Filter out 'Unknown' categories
+    df = df[df['category_name'].notna()]
+
     # Create visualization (heatmap)
     plt.figure(figsize=(12, 8))
     day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
