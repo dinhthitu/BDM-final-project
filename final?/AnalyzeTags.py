@@ -56,6 +56,16 @@ def analyze_tags(country_code):
     except FileNotFoundError:
         raise FileNotFoundError(f"Category mapping file {country_code}_category_id_to_name.json not found")
 
+    # Convert categoryId to int for comparison
+    df['categoryId'] = df['categoryId'].astype(int)
+
+    # Filter out invalid categoryIds (those not in category_names)
+    valid_category_ids = set(map(int, category_names.keys()))
+    df = df[df['categoryId'].isin(valid_category_ids)]
+
+    # Now proceed with tag and keyword analysis
+    category_names = {str(k): v for k, v in category_names.items()}
+
     # Initialize columns
     df['tags_processed'] = ''
     df['title_keywords'] = ''
@@ -130,8 +140,6 @@ def analyze_tags(country_code):
                     keywords_by_category.append(keywords_df)
                 else:
                     print(f"⚠️ No keywords extracted for category {category_name} ({country_code})")
-            else:
-                print(f"⚠️ No valid titles for category {category_name} ({country_code})")
 
         if keywords_by_category:
             keywords_all_df = pd.concat(keywords_by_category, ignore_index=True)
