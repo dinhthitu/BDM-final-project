@@ -32,8 +32,8 @@ def analyze_trending_hours(country_code):
     category_id_to_name = {int(key): value for key, value in category_names.items()}
     df['category_name'] = df['categoryId'].map(category_id_to_name)
 
-    # Handle missing category names
-    df['category_name'] = df['category_name'].fillna('Unknown')
+    # Filter out 'Unknown' categories
+    df = df[df['category_name'].notna()]
 
     # Calculate average hours_to_trend by category
     category_avg = df.groupby('category_name')['hours_to_trend'].mean().sort_values()
