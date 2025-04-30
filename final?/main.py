@@ -48,45 +48,6 @@ def main():
     for country in countries:
         generate_report(country)
     
-    # Step 8: Compare across countries
-    print("\n=== Comparing Across Countries ===")
-    compare_countries(countries)
-
-def compare_countries(countries):
-    """Compare category statistics across countries."""
-    all_stats = []
-    for country in countries:
-        try:
-            stats = pd.read_csv(f'{country}_output/{country}_category_stats.csv')
-            stats['Country'] = country
-            all_stats.append(stats)
-        except Exception as e:
-            print(f"⚠️ Failed to load stats for {country}: {str(e)}")
-    
-    if not all_stats:
-        print("❌ No data to compare across countries")
-        return
-    
-    combined_stats = pd.concat(all_stats)
-    combined_stats.to_csv('combined_category_stats.csv', index=False)
-    
-    # Visualize comparison
-    plt.figure(figsize=(14, 8))
-    sns.catplot(
-        data=combined_stats,
-        x='Category',
-        y='Percentage',
-        hue='Country',
-        kind='bar',
-        height=8,
-        aspect=2
-    )
-    plt.xticks(rotation=45)
-    plt.title('Category Distribution Across Countries')
-    plt.tight_layout()
-    plt.savefig('country_comparison.png')
-    plt.close()
-    print("✅ Saved country comparison to 'country_comparison.png'")
 
 if __name__ == "__main__":
     main()
