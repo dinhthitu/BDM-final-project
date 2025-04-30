@@ -45,6 +45,9 @@ def analyze_categories(country_code):
     # Add category name
     stats['Category'] = stats['categoryId'].astype(str).map(category_names).fillna('Unknown')
 
+    # Filter out 'Unknown' categories
+    stats = stats[stats['Category'] != 'Unknown']
+
     # Add percentage
     stats['Percentage'] = (stats['Video Count'] / len(df) * 100).round(2)
 
