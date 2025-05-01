@@ -91,9 +91,48 @@ def analyze_trending_patterns(country_code):
     print(tabulate(results_df, headers='keys', tablefmt='pretty', showindex=False))
     results_df.to_csv(f'{output_dir}/{country_code}_trending_stats_by_category.csv', index=False)
 
+    # Visualize trending stats by category with detailed information
+    plt.figure(figsize=(14, 8))
+    
+    # Define color palette for days of the week
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    colors = sns.color_palette('husl', len(day_order))
+    day_color_map = dict(zip(day_order, colors))
+    
+    # Plot bar chart
+    bars = sns.barplot(data=results_df, x='Danh mục', y='Số video', hue='Ngày đỉnh', palette=day_color_map)
+    
+    # Add annotations for optimal hour and time to trend
+    for i, bar in enumerate(bars.patches):
+        if i >= len(results_df):
+            break
+        height = bar.get_height()
+        optimal_hour = results_df.iloc[i]['Giờ đăng tối ưu']
+        time_to_trend = results_df.iloc[i]['Thời gian lên trending (giờ)']
+        plt.text(
+            bar.get_x() + bar.get_width() / 2, 
+            height + 0.05 * height,
+            f'Giờ: {optimal_hour}\nTrend: {time_to_trend}',
+            ha='center', va='bottom', fontsize=9, color='black'
+        )
+    
+    # Customize plot
+    plt.title(f'Trending Stats by Category ({country_code})', pad=20, fontweight='bold')
+    plt.xlabel('Danh mục')
+    plt.ylabel('Số lượng video')
+    plt.xticks(rotation=45, ha='right')
+    plt.legend(title='Ngày đỉnh', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    
+    # Save plot
+    plt.savefig(f'{output_dir}/{country_code}_detailed_trending_stats.png', dpi=150)
+    plt.close()
+
     print(f"✅ Analysis completed for {country_code}!")
-    print(f"- Chart: {output_dir}/{country_code}_trending_analysis.png")
-    print(f"- Data: {output_dir}/{country_code}_trending_stats_by_category.csv")
+    print(f"- Chart (Heatmap): {output_dir}/{country_code}_trending_analysis.png")
+    print(f"- Chart (Detailed Stats): {output_dir}/{country_code}_detailed_trending_stats.png")
+    print(f"- Data (Peak Hours): {output_dir}/{country_code}_peak_hours_by_category.csv")
+    print(f"- Data (Stats): {output_dir}/{country_code}_trending_stats_by_category.csv")
 
     return results_df.sort_values('Số video', ascending=False)
 
